@@ -34,7 +34,7 @@ const Watch: React.FC = () => {
   const [anime, setAnime] = useState<Anime | null>(location.state?.anime || null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentEp, setCurrentEp] = useState(1);
-  const [currentServer, setCurrentServer] = useState('vidstream');
+  const [currentServer, setCurrentServer] = useState('vidfast');
   const [lightsOff, setLightsOff] = useState(false);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [servers, setServers] = useState<Server[]>([]);
@@ -43,12 +43,12 @@ const Watch: React.FC = () => {
   const [tmdbId, setTmdbId] = useState<number | null>(null);
   const [isMovie, setIsMovie] = useState(true);
   const [totalEpisodes, setTotalEpisodes] = useState<number>(0);
+  const [videoLoaded, setVideoLoaded] = useState(false);
 
   const SERVERS = [
-    { id: 'vidstream', name: 'Vidstream', type: 'fast' },
-    { id: 'megacloud', name: 'MegaCloud', type: 'hd' },
-    { id: 'streamtape', name: 'StreamTape', type: 'slow' },
-    { id: 'mp4upload', name: 'Mp4Upload', type: 'backup' }
+    { id: 'vidfast', name: 'Vidfast', type: 'fast' },
+    { id: 'mapple', name: 'Mapple', type: 'hd' },
+    { id: 'vidora', name: 'Vidora', type: 'backup' }
   ];
 
   // Fetch anime data if not provided or incomplete
@@ -71,6 +71,23 @@ const Watch: React.FC = () => {
       setTotalEpisodes(anime.episodes);
     }
   }, [anime, totalEpisodes]);
+
+  // Reset video loaded state when changing episodes or servers
+  useEffect(() => {
+    setVideoLoaded(false);
+  }, [currentEp, currentServer]);
+
+  // Simulate video loading - set loaded after 0.5 seconds (much faster)
+  useEffect(() => {
+    if (!videoLoaded) {
+      const timer = setTimeout(() => {
+        setVideoLoaded(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [videoLoaded]);
+
+
 
   const fetchAnimeData = async (animeId: string) => {
     try {
@@ -176,6 +193,29 @@ const Watch: React.FC = () => {
     }
   };
 
+  const getVideoSrc = () => {
+    if (!anime) return '';
+    const id = tmdbId || anime.mal_id;
+    const season = 1; // Default season
+
+    switch (currentServer) {
+      case 'vidfast':
+        return isMovie
+          ? `https://vidfast.pro/movie/${id}?autoplay=true`
+          : `https://vidfast.pro/tv/${id}/${season}/${currentEp}`;
+      case 'mapple':
+        return isMovie
+          ? `https://mapple.uk/watch/movie/${id}?autoplay=true`
+          : `https://mapple.uk/watch/tv/${id}/${season}/${currentEp}?nextButton=true&autoPlay=true`;
+      case 'vidora':
+        return isMovie
+          ? `https://vidora.su/movie/${id}?autoplay=true&colour=00ff9d&backbutton=https://vidora.su/&logo=https://vidora.su/logo.png`
+          : `https://vidora.su/tv/${id}/${season}/${currentEp}?autoplay=true&colour=00ff9d&autonextepisode=true&backbutton=https://vidora.su/&logo=https://vidora.su/logo.png`;
+      default:
+        return `https://vidfast.pro/movie/${id}?autoPlay=true`;
+    }
+  };
+
   const Tag = ({ text, color = "bg-white/10" }: { text: string, color?: string }) => (
     <span className={`${color} px-2 py-0.5 rounded text-[10px] sm:text-xs font-bold text-gray-200 tracking-wide uppercase`}>
       {text}
@@ -217,20 +257,39 @@ const Watch: React.FC = () => {
       <main className="max-w-[1400px] mx-auto p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* LEFT COLUMN: Player & Info */}
         <div className="lg:col-span-2 space-y-6">
+
           {/* Video Player Container */}
           <div className="relative aspect-video bg-black rounded-2xl overflow-hidden border border-white/10">
             <iframe
-              src={tmdbId ? (isMovie ? `https://vidfast.pro/movie/${tmdbId}` : `https://vidfast.pro/tv/${tmdbId}/1/${currentEp}`) : `https://vidfast.pro/movie/${anime.mal_id}`}
+              src={getVideoSrc()}
               width="100%"
               height="100%"
               frameBorder="0"
               allowFullScreen
               allow="encrypted-media"
+              referrerPolicy="unsafe-url"
               className="w-full h-full"
             ></iframe>
           </div>
 
-
+          <div className="bg-black/50 border border-white/10 rounded-2xl p-4 backdrop-blur-sm">
+            <h4 className="text-xl font-roboto font-bold  text-white mb-3">Server</h4>
+            <div className="flex gap-2 flex-wrap">
+              {SERVERS.map((server) => (
+                <button
+                  key={server.id}
+                  onClick={() => setCurrentServer(server.id)}
+                  className={`px-3 py-2 rounded-lg text-l font-semibold transition ${
+                    currentServer === server.id
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                  }`}
+                >
+                  {server.name}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Anime Details */}
           <div className="bg-black/50 border border-white/10 rounded-2xl p-8 backdrop-blur-sm">
@@ -282,7 +341,7 @@ const Watch: React.FC = () => {
 <div className="space-y-6">
           <div className="bg-black/50 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-sm">
             <div className="p-6 border-b border-white/10">
-              <h3 className="font-black italic text-white text-xl uppercase tracking-wide">Episodes</h3>
+              <h3 className="text-xl font-roboto font-bold  text-white mb">Episodes</h3>
             </div>
             <div className="p-6 grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-4 gap-3 max-h-[600px] overflow-y-auto">
               {episodes.map((ep) => (
