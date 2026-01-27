@@ -2,12 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search, X, Home as HomeIcon, Film, Tv, Folder,
-  Bookmark, Megaphone, Settings, Sparkles, Play
+  Bookmark, Megaphone, Settings, Sparkles, Play,
+  CatIcon,
+  GlobeIcon
 } from 'lucide-react';
 
 interface Anime {
   mal_id: number;
   title: string;
+  title_english?: string;
+  synopsis?: string;
+  genres?: { name: string }[];
+  score?: number;
+  episodes?: number;
+  status?: string;
+  year?: number;
   images: {
     jpg: {
       image_url: string;
@@ -22,9 +31,6 @@ interface Anime {
       maximum_image_url?: string;
     };
   };
-  score?: number;
-  episodes?: number;
-  status?: string;
 }
 
 const Home: React.FC = () => {
@@ -189,40 +195,8 @@ const Home: React.FC = () => {
       const data = await res.json();
       const animeList = data.data || [];
 
-      // Check each anime against TMDB to ensure it exists and can be streamed
-      const validatedResults = await Promise.all(
-        animeList.map(async (anime: Anime) => {
-          try {
-            // Clean title for TMDB search
-            let cleanTitle = anime.title
-              .replace(/(?:season|season\s+\d+|\d+\w*\s*season)/i, '')
-              .replace(/[^\w\s]/g, '')
-              .trim();
-
-            // Search TMDB for TV shows
-            const tmdbResponse = await fetch(
-              `https://api.themoviedb.org/3/search/tv?api_key=630c8f01625f3d0eb72180513daa9fca&query=${encodeURIComponent(cleanTitle)}&include_adult=false`
-            );
-            const tmdbData = await tmdbResponse.json();
-
-            // Check if anime exists in TMDB
-            const existsInTMDB = tmdbData.results && tmdbData.results.some((result: any) =>
-              result.name.toLowerCase().includes('anime') ||
-              result.overview.toLowerCase().includes('anime') ||
-              result.origin_country?.includes('JP') ||
-              result.original_language === 'ja'
-            );
-
-            return existsInTMDB ? anime : null;
-          } catch (error) {
-            console.error('TMDB validation error:', error);
-            return null; // Exclude if TMDB check fails
-          }
-        })
-      );
-
-      // Filter out null results and limit to 6
-      const finalResults = validatedResults.filter(anime => anime !== null).slice(0, 6);
+      // Limit to 6 results without TMDB validation for better performance
+      const finalResults = animeList.slice(0, 6);
       setSearchResults(finalResults);
       setShowSearch(true);
     } finally { setIsSearching(false); }
@@ -334,18 +308,45 @@ const Home: React.FC = () => {
       <div
         key={anime.mal_id}
         onClick={() => navigate(`/watch/${anime.mal_id}`, { state: { anime } })}
-        className="group cursor-pointer hover:scale-105 transition-all duration-200"
+        className="group cursor-pointer hover:scale-105 transition-all duration-200 hover:shadow-lg"
       >
-        {/* FIX 1: Added 'transform-gpu' to force hardware acceleration on the container */}
         <div className="relative aspect-[2/3] rounded-2xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-violet-500/40 transition-all duration-300 transform-gpu">
-          
-          {/* FIX 2: Removed 'rounded-2xl' from the img. The parent overflow-hidden handles the rounding. */}
-          <img 
-            src={anime.images.jpg.image_url} 
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-            alt="" 
+          <img
+            src={anime.images.jpg.image_url}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            alt=""
           />
-          
+          <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-black border border-white/10">
+            HD
+          </div>
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-60 group-hover:opacity-100 transition-opacity" />
+        </div>
+        <h3 className="mt-3 text-sm font-bold truncate text-gray-200 group-hover:text-white transition-colors">{anime.title}</h3>
+        <div className="flex items-center justify-between mt-1">
+          <span className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter">{anime.episodes || '?'} EPISODES</span>
+          <span className="text-[10px] text-violet-400 font-black">TV</span>
+        </div>
+      </div>
+    ))}
+  </div>
+</section>
+
+{/* RECOMMENDATIONS GRID */}
+<section className="space-y-6">
+  <h2 className="text-2xl font-bold tracking-tight">Recommendations</h2>
+  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+    {recentAnime.slice(0, 12).map((anime) => (
+      <div
+        key={`rec-${anime.mal_id}`}
+        onClick={() => navigate(`/watch/${anime.mal_id}`, { state: { anime } })}
+        className="group cursor-pointer hover:scale-105 transition-all duration-200 hover:shadow-lg "
+      >
+        <div className="relative aspect-[2/3] rounded-2xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-violet-500/40 transition-all duration-300 transform-gpu">
+          <img
+            src={anime.images.jpg.image_url}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            alt=""
+          />
           <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-black border border-white/10">
             HD
           </div>
