@@ -42,7 +42,7 @@ const Watch: React.FC = () => {
   const [selectedEpisode, setSelectedEpisode] = useState<number | null>(null);
   const [tmdbId, setTmdbId] = useState<number | null>(null);
   const [isMovie, setIsMovie] = useState(true);
-  const [totalEpisodes, setTotalEpisodes] = useState<number>(12);
+  const [totalEpisodes, setTotalEpisodes] = useState<number>(0);
 
   const SERVERS = [
     { id: 'vidstream', name: 'Vidstream', type: 'fast' },
@@ -51,12 +51,38 @@ const Watch: React.FC = () => {
     { id: 'mp4upload', name: 'Mp4Upload', type: 'backup' }
   ];
 
+  // Fetch anime data if not provided or incomplete
+  useEffect(() => {
+    if (id && (!anime || !anime.synopsis)) {
+      fetchAnimeData(id);
+    }
+  }, [id, anime]);
+
   // Fetch TMDB ID and determine if movie or TV show
   useEffect(() => {
-    if (anime) {
+    if (anime && anime.title) {
       fetchTmdbId(anime.title);
     }
   }, [anime]);
+
+  // Set fallback episode count from MAL data if TMDB fails
+  useEffect(() => {
+    if (anime && anime.episodes && totalEpisodes === 0) {
+      setTotalEpisodes(anime.episodes);
+    }
+  }, [anime, totalEpisodes]);
+
+  const fetchAnimeData = async (animeId: string) => {
+    try {
+      const response = await fetch(`https://api.jikan.moe/v4/anime/${animeId}`);
+      const data = await response.json();
+      if (data.data) {
+        setAnime(data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching anime data:', error);
+    }
+  };
 
   // Update episodes when totalEpisodes changes
   useEffect(() => {
@@ -72,41 +98,74 @@ const Watch: React.FC = () => {
 
   const fetchTmdbId = async (title: string) => {
     try {
+      // Extract season information from title
+      const seasonMatch = title.match(/(?:season|season\s+(\d+)|(\d+)\w*\s*season)/i);
+      const seasonNumber = seasonMatch ? (parseInt(seasonMatch[1] || seasonMatch[2]) || 1) : 1;
+
+      // Clean title for better search results
+      let cleanTitle = title
+        .replace(/(?:season|season\s+\d+|\d+\w*\s*season)/i, '')
+        .replace(/[^\w\s]/g, '')
+        .trim();
+
+      console.log('Searching for:', cleanTitle, 'Season:', seasonNumber);
+
       // First search for anime specifically
-      const animeResponse = await fetch(`https://api.themoviedb.org/3/search/tv?api_key=630c8f01625f3d0eb72180513daa9fca&query=${encodeURIComponent(title)}&include_adult=false`);
+      const animeResponse = await fetch(`https://api.themoviedb.org/3/search/tv?api_key=630c8f01625f3d0eb72180513daa9fca&query=${encodeURIComponent(cleanTitle)}&include_adult=false`);
       const animeData = await animeResponse.json();
 
       if (animeData.results && animeData.results.length > 0) {
-        // Check if it's actually an anime by looking for keywords in title or overview
-        const animeResult = animeData.results.find((result: any) =>
+        // Find the best match, prioritizing anime characteristics
+        let bestMatch = animeData.results.find((result: any) =>
           result.name.toLowerCase().includes('anime') ||
           result.overview.toLowerCase().includes('anime') ||
           result.origin_country?.includes('JP') ||
           result.original_language === 'ja'
         ) || animeData.results[0];
 
-        setTmdbId(animeResult.id);
+        // If we have season info and the anime has seasons, try to get season-specific data
+        if (seasonNumber > 1 && bestMatch) {
+          try {
+            const seasonsResponse = await fetch(`https://api.themoviedb.org/3/tv/${bestMatch.id}?api_key=630c8f01625f3d0eb72180513daa9fca`);
+            const seasonsData = await seasonsResponse.json();
+
+            if (seasonsData.seasons && seasonsData.seasons.length >= seasonNumber) {
+              // Use the season-specific ID if available
+              const seasonData = seasonsData.seasons[seasonNumber - 1];
+              if (seasonData) {
+                console.log('Found season data:', seasonData);
+                setTotalEpisodes(seasonData.episode_count || 12);
+              }
+            }
+          } catch (seasonError) {
+            console.log('Could not fetch season data, using default');
+          }
+        }
+
+        setTmdbId(bestMatch.id);
         setIsMovie(false);
 
-        // Fetch episode count for TV shows
-        const detailsResponse = await fetch(`https://api.themoviedb.org/3/tv/${animeResult.id}?api_key=630c8f01625f3d0eb72180513daa9fca`);
-        const detailsData = await detailsResponse.json();
-        if (detailsData.number_of_episodes) {
-          setTotalEpisodes(detailsData.number_of_episodes);
+        // Fetch episode count for TV shows if not already set
+        if (!totalEpisodes) {
+          const detailsResponse = await fetch(`https://api.themoviedb.org/3/tv/${bestMatch.id}?api_key=630c8f01625f3d0eb72180513daa9fca`);
+          const detailsData = await detailsResponse.json();
+          if (detailsData.number_of_episodes) {
+            setTotalEpisodes(detailsData.number_of_episodes);
+          }
         }
 
         return;
       }
 
       // If no anime found, search movies as fallback
-      const movieResponse = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=630c8f01625f3d0eb72180513daa9fca&query=${encodeURIComponent(title)}&include_adult=false`);
+      const movieResponse = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=630c8f01625f3d0eb72180513daa9fca&query=${encodeURIComponent(cleanTitle)}&include_adult=false`);
       const movieData = await movieResponse.json();
 
       if (movieData.results && movieData.results.length > 0) {
         const movieResult = movieData.results.find((result: any) =>
-          result.title.toLowerCase().includes('anime') ||
-          result.overview.toLowerCase().includes('anime') ||
-          result.original_language === 'ja'
+          movieResult.title.toLowerCase().includes('anime') ||
+          movieResult.overview.toLowerCase().includes('anime') ||
+          movieResult.original_language === 'ja'
         ) || movieData.results[0];
 
         setTmdbId(movieResult.id);
@@ -140,7 +199,7 @@ const Watch: React.FC = () => {
   }
 
   return (
-    <div className={`min-h-screen bg-black text-white relative transition-colors duration-500 ${lightsOff ? 'brightness-50' : ''}`}>
+    <div className={`min-h-screen bg-black text-white relative transition-colors duration-500 ${lightsOff ? 'brightness-50' : ''} animate-fade-in-scale`}>
       {/* Header */}
       <nav className="sticky top-0 z-50 bg-black/95 backdrop-blur-sm border-b border-white/10 h-16 flex items-center justify-between px-6 lg:px-8">
         <div className="flex items-center gap-6">
@@ -211,7 +270,7 @@ const Watch: React.FC = () => {
 
                 <div className="flex flex-wrap gap-2 mt-4">
                   {anime.genres?.map((genre) => (
-                    <span key={genre.name} className="text-xs text-gray-300 hover:text-blue-600 cursor-pointer transition border border-white/10 px-3 py-1 rounded-full hover:border-blue-600">{genre.name}</span>
+                    <span key={genre.name} className="text-xs text-gray-300 hover:text-violet-600 cursor-pointer transition border border-white/10 px-3 py-1 rounded-full hover:border-violet-600">{genre.name}</span>
                   ))}
                 </div>
               </div>
@@ -233,7 +292,7 @@ const Watch: React.FC = () => {
                   className={`
                     py-3 rounded-xl text-sm font-bold transition
                     ${currentEp === ep.number
-                      ? 'bg-blue-600 text-white'
+                      ? 'bg-violet-600 text-white'
                       : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 border border-white/10'}
                   `}
                 >
