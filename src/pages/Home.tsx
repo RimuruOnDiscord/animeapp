@@ -1,13 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, X } from 'lucide-react';
+import {
+  Search, X, Home as HomeIcon, Film, Tv, Folder,
+  Bookmark, Megaphone, Settings, Sparkles, Play
+} from 'lucide-react';
 
 interface Anime {
   mal_id: number;
   title: string;
-  synopsis: string;
-  images: { jpg: { image_url: string } };
-  url: string;
+  images: {
+    jpg: {
+      image_url: string;
+      small_image_url: string;
+      large_image_url: string;
+      maximum_image_url?: string;
+    };
+    webp?: {
+      image_url: string;
+      small_image_url: string;
+      large_image_url: string;
+      maximum_image_url?: string;
+    };
+  };
   score?: number;
   episodes?: number;
   status?: string;
@@ -17,251 +31,338 @@ const Home: React.FC = () => {
   const [recentAnime, setRecentAnime] = useState<Anime[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<Anime[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [showSearchResults, setShowSearchResults] = useState(false);
+  
+  // THE "GOLD STANDARD" ANIMATION STATES
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchMounted, setSearchMounted] = useState(false);
+
   const navigate = useNavigate();
 
+  // Animation styles injection
+  useEffect(() => {
+    const id = 'vf-ui-animations';
+    if (document.getElementById(id)) return;
+    const s = document.createElement('style');
+    s.id = id;
+    s.innerHTML = `
+      .animate-in { will-change: transform, opacity; }
+      .animate-out { will-change: transform, opacity; }
+      .fade-in { animation: vf-fade-in .28s cubic-bezier(.2,.9,.3,1) both; }
+      .fade-out { animation: vf-fade-out .22s cubic-bezier(.4,.0,.2,1) both; }
+      .zoom-in { animation: vf-zoom-in .32s cubic-bezier(.2,.9,.3,1) both; }
+      .zoom-out { animation: vf-zoom-out .22s cubic-bezier(.4,.0,.2,1) both; }
+      .spin-in { animation: vf-spin-in .45s cubic-bezier(.2,.9,.3,1) both; }
+      .slide-in-from-bottom { animation: vf-slide-in-from-bottom .36s cubic-bezier(.2,.9,.3,1) both; }
+      .slide-in-from-bottom-4 { animation: vf-slide-in-from-bottom .36s cubic-bezier(.2,.9,.3,1) both; }
+      .slide-out-to-bottom-4 { animation: vf-slide-out-to-bottom .26s cubic-bezier(.4,.0,.2,1) both; }
+      .slide-in-from-left { animation: vf-slide-in-from-left .36s cubic-bezier(.2,.9,.3,1) both; }
+      .slide-in-from-right { animation: vf-slide-in-from-right .36s cubic-bezier(.2,.9,.3,1) both; }
+      .slide-in-from-top { animation: vf-slide-in-from-top .36s cubic-bezier(.2,.9,.3,1) both; }
+
+      @keyframes vf-fade-in { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes vf-fade-out { from { opacity: 1; } to { opacity: 0; } }
+      @keyframes vf-zoom-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+      @keyframes vf-zoom-out { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(8px) scale(.985); } }
+      @keyframes vf-spin-in { from { transform: rotate(-8deg) scale(.95); opacity:0 } to { transform: rotate(0deg) scale(1); opacity:1 } }
+      @keyframes vf-slide-in-from-bottom { from { opacity: 0; transform: translateY(26px) scale(.995); } to { opacity: 1; transform: translateY(0) scale(1); } }
+      @keyframes vf-slide-out-to-bottom { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(18px) scale(.995); } }
+      @keyframes vf-slide-in-from-left { from { opacity: 0; transform: translateX(-18px) scale(.995); } to { opacity: 1; transform: translateX(0) scale(1); } }
+      @keyframes vf-slide-in-from-right { from { opacity: 0; transform: translateX(18px) scale(.995); } to { opacity: 1; transform: translateX(0) scale(1); } }
+      @keyframes vf-slide-in-from-top { from { opacity: 0; transform: translateY(-18px) scale(.995); } to { opacity: 1; transform: translateY(0) scale(1); } }
+      /* Smooth transitions for drag and drop */
+      .no-rise { transform: none !important; }
+      /* Ripple effect - less intense */
+      .vf-ripple { position: absolute; width: 50px; height: 50px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.10) 70%, transparent 100%); transform: translate(-50%,-50%) scale(0); pointer-events: none; box-shadow: 0 0 10px 0px rgba(255,255,255,0.17); animation: vf-ripple 380ms cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+      @keyframes vf-ripple {
+        0% { transform: translate(-50%,-50%) scale(0); opacity: 0.9; }
+        100% { transform: translate(-50%,-50%) scale(7); opacity: 0; }
+      }
+      button { position: relative; overflow: hidden; }
+      /* Slider thumb styling */
+      .slider::-webkit-slider-thumb {
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: white;
+        cursor: pointer;
+        border: 2px solid rgba(255,255,255,0.3);
+        box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      }
+      .slider::-moz-range-thumb {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: white;
+        cursor: pointer;
+        border: 2px solid rgba(255,255,255,0.3);
+        box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      }
+    `;
+    document.head.appendChild(s);
+    return () => { s.remove(); };
+  }, []);
+
+  // Ripple effect handler - creates a visible ripple on button click
+  const createRipple = (e: React.MouseEvent<HTMLElement>) => {
+    const button = e.currentTarget;
+    const rect = button.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const ripple = document.createElement('div');
+    ripple.className = 'vf-ripple';
+    ripple.style.left = `${x}px`;
+    ripple.style.top = `${y}px`;
+
+    button.appendChild(ripple);
+
+    setTimeout(() => {
+      ripple.remove();
+    }, 600);
+  };
+
+  // 1. Data Fetching
   useEffect(() => {
     fetchRecentAnime();
   }, []);
 
+  // 2. The Animation Lifecycle Logic
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchQuery.trim()) {
-        searchAnime(searchQuery);
-      } else {
-        fetchRecentAnime();
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+    if (showSearch) {
+      setSearchMounted(true);
+    } else if (searchMounted) {
+      // Matches the 350ms in your CSS/original logic
+      const t = setTimeout(() => setSearchMounted(false), 350);
+      return () => clearTimeout(t);
+    }
+  }, [showSearch]);
 
   const fetchRecentAnime = async () => {
     try {
       setLoading(true);
-      const response = await fetch('https://api.jikan.moe/v4/anime?status=airing&order_by=score&sort=desc&limit=24');
-      const data = await response.json();
-      setRecentAnime(data.data || []);
-    } catch (error) {
-      console.error('Error fetching recent anime:', error);
-    } finally {
-      setLoading(false);
-    }
+      const res = await fetch('https://api.jikan.moe/v4/seasons/now?limit=24');
+      const data = await res.json();
+      // Filter out season sequels/parts (shows with "Part", "Season X", etc.)
+      const filteredAnime = (data.data || []).filter((anime: Anime) => {
+        const title = anime.title.toLowerCase();
+        // Hide anime with season/part indicators in title
+        return !title.includes('part ') &&
+               !title.includes('part 1') &&
+               !title.includes('part 2') &&
+               !title.includes('part 3') &&
+               !title.includes('part 4') &&
+               !title.includes('part 5') &&
+               !title.includes('season ') &&
+               !title.includes(' s2') &&
+               !title.includes(' s3') &&
+               !title.includes(' s4') &&
+               !title.includes(' s5') &&
+               !title.includes(' ii') &&
+               !title.includes(' iii') &&
+               !title.includes(' iv') &&
+               !title.includes(' v') &&
+               !title.includes(' 2nd') &&
+               !title.includes(' 3rd') &&
+               !title.includes(' 4th') &&
+               !title.includes(' 5th') &&
+               !title.includes('zenpen') && // Japanese "first part"
+               !title.includes('kouhen') && // Japanese "second part"
+               !title.includes(' zenpen') &&
+               !title.includes(' kouhen') &&
+               !title.includes(': ') && // Often indicates subtitle/part
+               !title.includes(' - ') && // Often indicates subtitle/part
+               !title.includes(' (part') &&
+               !title.includes(' (season');
+      });
+      setRecentAnime(filteredAnime);
+    } finally { setLoading(false); }
   };
 
   const searchAnime = async (query: string) => {
-    if (!query.trim()) {
-      setSearchResults([]);
-      setShowSearchResults(false);
-      return;
-    }
-
+    if (!query.trim()) return;
     setIsSearching(true);
     try {
-      const response = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=5`);
-      const data = await response.json();
-      setSearchResults(data.data || []);
-      setShowSearchResults(true);
-    } catch (error) {
-      console.error('Search error:', error);
-      setSearchResults([]);
-    }
-    setIsSearching(false);
+      const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=12`);
+      const data = await res.json();
+      const animeList = data.data || [];
+
+      // Check each anime against TMDB to ensure it exists and can be streamed
+      const validatedResults = await Promise.all(
+        animeList.map(async (anime: Anime) => {
+          try {
+            // Clean title for TMDB search
+            let cleanTitle = anime.title
+              .replace(/(?:season|season\s+\d+|\d+\w*\s*season)/i, '')
+              .replace(/[^\w\s]/g, '')
+              .trim();
+
+            // Search TMDB for TV shows
+            const tmdbResponse = await fetch(
+              `https://api.themoviedb.org/3/search/tv?api_key=630c8f01625f3d0eb72180513daa9fca&query=${encodeURIComponent(cleanTitle)}&include_adult=false`
+            );
+            const tmdbData = await tmdbResponse.json();
+
+            // Check if anime exists in TMDB
+            const existsInTMDB = tmdbData.results && tmdbData.results.some((result: any) =>
+              result.name.toLowerCase().includes('anime') ||
+              result.overview.toLowerCase().includes('anime') ||
+              result.origin_country?.includes('JP') ||
+              result.original_language === 'ja'
+            );
+
+            return existsInTMDB ? anime : null;
+          } catch (error) {
+            console.error('TMDB validation error:', error);
+            return null; // Exclude if TMDB check fails
+          }
+        })
+      );
+
+      // Filter out null results and limit to 6
+      const finalResults = validatedResults.filter(anime => anime !== null).slice(0, 6);
+      setSearchResults(finalResults);
+      setShowSearch(true);
+    } finally { setIsSearching(false); }
   };
 
-  const handleAnimeClick = (anime: Anime) => {
-    navigate(`/watch/${anime.mal_id}`, { state: { anime } });
-  };
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchQuery) searchAnime(searchQuery);
+      else setShowSearch(false);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
-      {/* Header Navigation */}
-      <nav className="sticky top-0 z-50 bg-[#0a0a0a]/95 backdrop-blur-sm border-b border-white/10 h-16 flex items-center justify-between px-6 lg:px-8">
+    <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-violet-500/30 animate-fade-in-scale">
+      
+      {/* SPENFLIX PREMIUM HEADER */}
+      <header className="sticky top-0 z-[100] w-full bg-[#050505]/80 backdrop-blur-xl border-b border-white/5 transition-all">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+          
+          <div className="flex items-center gap-8">
+            {/* Logo */}
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
+               <span className="text-xl font-black tracking-tighter uppercase hidden sm:block">
+                 🗲
+               </span>
+            </div>
 
+            {/* Nav Links - SpenFlix Style */}
+            <nav className="hidden md:flex items-center gap-1">
+              <button onClick={createRipple} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-violet-600 text-white hover:bg-violet-500 hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-violet-500/25"><HomeIcon size={18}/> Home</button>
+            </nav>
+          </div>
 
-        {/* Centered Search Bar */}
-        <div className="flex-1 max-w-lg mx-auto relative">
-          <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => searchQuery && setShowSearchResults(true)}
-            onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
-            className="w-full bg-black/50 border border-white/20 rounded-xl py-3 pl-5 pr-24 focus:border-blue-400 focus:ring-1 focus:ring-blue-400/20 outline-none text-sm text-white placeholder-gray-400 transition-all duration-200"
-            placeholder="Search anime..."
-          />
-          {searchQuery && (
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setSearchResults([]);
-                setShowSearchResults(false);
-              }}
-              className="absolute right-12 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-400 p-2 rounded-lg hover:bg-white/5 transition-colors"
-            >
-              <X size={16} />
-            </button>
-          )}
-          <button className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-400 p-2 rounded-lg hover:bg-white/5 transition-colors">
-            {isSearching ? <div className="animate-spin w-4 h-4 border-2 border-gray-400 border-t-blue-400 rounded-full"></div> : <Search size={18} />}
-          </button>
+          <div className="flex items-center gap-4">
+            {/* SEARCH BAR CONTAINER */}
+            <div className="relative group">
+              <div className="relative">
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => searchQuery && setShowSearch(true)}
+                  onBlur={() => setTimeout(() => setShowSearch(false), 200)}
+                  className="bg-black border border-white/10 rounded-md py-2 pl-10 pr-4 text-sm w-[180px] md:w-[260px] focus:w-[320px] focus:border-violet-500/50 outline-none transition-all duration-300"
+                  placeholder="Search..."
+                />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+              </div>
 
-          {/* Search Results Dropdown */}
-          {showSearchResults && searchResults.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-3 bg-black/95 border border-white/10 rounded-xl shadow-2xl max-h-96 overflow-y-auto z-50 backdrop-blur-sm">
-              {searchResults.map((anime) => (
-                <div
-                  key={anime.mal_id}
-                  onClick={() => handleAnimeClick(anime)}
-                  className="flex gap-4 p-4 hover:bg-white/5 cursor-pointer transition-all duration-200 border-b border-white/5 last:border-b-0"
-                >
-                  <img
-                    src={anime.images?.jpg?.image_url || '/placeholder.jpg'}
-                    alt={anime.title}
-                    className="w-14 h-20 object-cover rounded-lg"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = '/placeholder.jpg';
-                    }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-bold text-white truncate mb-1">{anime.title}</h4>
-                    {anime.title_english && anime.title_english !== anime.title && (
-                      <p className="text-xs text-gray-400 truncate mb-2">{anime.title_english}</p>
-                    )}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full font-semibold border border-blue-500/30">
-                        {anime.score || 'N/A'}
-                      </span>
-                      <span className="text-[10px] bg-white/10 px-2 py-1 rounded-full text-gray-400 border border-white/20">
-                        {anime.episodes || '?'} ep
-                      </span>
-                      <span className="text-[10px] bg-white/10 px-2 py-1 rounded-full text-gray-400 capitalize border border-white/20">
-                        {anime.status?.toLowerCase() || 'unknown'}
-                      </span>
+              {/* SEARCH RESULTS DROPDOWN (ANIMATED) */}
+              {searchMounted && (
+                <div className={`
+                  absolute top-full right-0 mt-3 w-80 bg-[#0f0f0f] border border-white/10 rounded-2xl shadow-2xl z-[110] overflow-hidden
+                  ${showSearch ? 'animate-in' : 'animate-out'}
+                `}>
+                  {searchResults.map((anime) => (
+                    <div
+                      key={anime.mal_id}
+                      onClick={() => navigate(`/watch/${anime.mal_id}`, { state: { anime } })}
+                      className="flex gap-3 p-3 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-b-0 transition-colors"
+                    >
+                      <img src={anime.images.jpg.image_url} className="w-10 h-14 object-cover rounded-md shadow-md" alt="" />
+                      <div className="min-w-0 flex flex-col justify-center">
+                        <h4 className="text-xs font-bold truncate text-gray-100">{anime.title}</h4>
+                        <p className="text-[10px] text-violet-400 font-bold mt-1 uppercase">★ {anime.score || 'N/A'}</p>
+                      </div>
                     </div>
-                  </div>
+                  ))}
+                  {isSearching && (
+                    <div className="p-4 text-center text-[10px] text-gray-500 uppercase tracking-widest animate-pulse">Searching archives...</div>
+                  )}
                 </div>
-              ))}
+              )}
             </div>
+            
+          </div>
+        </div>
+      </header>
+
+      {/* MAIN LAYOUT */}
+      <main className="container mx-auto px-4 py-8 space-y-12">
+        
+        {/* HERO BANNER SECTION (21/9 Aspect) */}
+        <section className="relative w-full aspect-[21/9] rounded-3xl overflow-hidden group shadow-2xl">
+          {recentAnime[0] && (
+            <>
+              <img src="https://movieplayer.net-cdn.it/t/images/2025/01/08/fate-strange-fake-recensione-primi-episodi-anime-crunchyroll_jpg_1280x720_crop_q85.jpg" className="w-full h-full object-cover" alt="hero" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/40 to-transparent flex flex-col justify-end p-8 md:p-12">
+                 <div className="flex items-center gap-2 mb-4">
+                    <span className="bg-violet-600 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase">Spotlight</span>
+                    <span className="text-sm font-bold text-yellow-500">★ {recentAnime[0].score}</span>
+                 </div>
+                 <h1 className="text-4xl md:text-6xl font-black mb-6 max-w-2xl leading-none uppercase italic tracking-tighter">{recentAnime[0].title}</h1>
+                 <div className="flex gap-4">
+                    <button onClick={createRipple} className="bg-white/10 backdrop-blur-md px-8 py-3 rounded-xl font-black hover:bg-white/20 transition-all border border-white/10">
+                      VIEW MORE
+                    </button>
+                 </div>
+              </div>
+            </>
           )}
-        </div>
+        </section>
 
-        {/* Social Icons & Sign In */}
-
-      </nav>
-
-      {/* Main Content - Two Column Layout */}
-      <main className="max-w-[1400px] mx-auto p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
-        {/* LEFT COLUMN: Main Content (3/4 width) */}
-        <div className="lg:col-span-3 space-y-8">
-          {/* Hero Section - Carousel */}
-    
-
-          {/* Recently Updated Section */}
-          <div>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-3xl font-black text-white uppercase tracking-wide">
-                {searchQuery.trim() ? `Search Results for "${searchQuery}"` : 'Recently Updated'}
-              </h2>
-            </div>
-
-            {loading ? (
-              <div className="text-center py-24">
-                <div className="animate-spin w-12 h-12 border-4 border-gray-600 border-t-blue-600 rounded-full mx-auto mb-4"></div>
-                <p className="text-blue-600 font-bold text-lg">LOADING ANIME...</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-                {recentAnime.slice(0, 24).map((anime) => (
-                  <div
-                    key={anime.mal_id}
-                    onClick={() => handleAnimeClick(anime)}
-                    className="relative cursor-pointer group"
-                  >
-                    <div className="aspect-[3/4.2] overflow-hidden bg-gray-900 border border-white/10 rounded-xl relative group-hover:border-blue-600/50 transition-all duration-300">
-                      <img
-                        src={anime.images.jpg.image_url}
-                        alt={anime.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = '/placeholder.jpg';
-                        }}
-                      />
-                      {/* Overlay Badges */}
-                      <div className="absolute top-2 left-2 flex gap-1">
-                        <span className="bg-white text-black text-[9px] font-black px-2 py-1 rounded-md">HD</span>
-                        <span className="bg-gray-800 text-white text-[9px] font-bold px-2 py-1 rounded-md">SUB</span>
-                      </div>
-                      <div className="absolute bottom-2 left-2 bg-blue-600 text-white text-[9px] font-bold px-2 py-1 rounded-md">
-                        {anime.episodes ? `${anime.episodes} Ep` : 'Ongoing'}
-                      </div>
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
-                    </div>
-                    <h3 className="mt-3 text-sm font-bold text-gray-300 leading-tight group-hover:text-blue-600 truncate uppercase transition-colors duration-300">
-                      {anime.title}
-                    </h3>
-                    {anime.score && (
-                      <div className="text-xs text-yellow-500 font-bold mt-1 flex items-center gap-1">
-                        ⭐ {anime.score.toFixed(1)}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* RIGHT COLUMN: Sidebar (1/4 width) */}
-        <div className="space-y-6">
-          {/* Quick Filter Widget */}
-
-          {/* Top Anime Leaderboard */}
-          <div className="bg-black/50 border border-white/10 rounded-2xl p-6 backdrop-blur-sm">
-  <h3 className="font-black text-white text-lg uppercase tracking-wide mb-4">Top Anime</h3>
-  <div className="space-y-2">
-    {recentAnime.slice(0, 8).map((anime, idx) => (
-      <div 
-        key={anime.mal_id} 
-        className="flex items-center gap-3 p-3 hover:bg-white/5 rounded-lg cursor-pointer transition-all group"
+        {/* RECENTLY UPDATED GRID */}
+<section className="space-y-6">
+  <h2 className="text-2xl font-bold tracking-tight">Recently Updated</h2>
+  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+    {recentAnime.map((anime) => (
+      <div
+        key={anime.mal_id}
+        onClick={() => navigate(`/watch/${anime.mal_id}`, { state: { anime } })}
+        className="group cursor-pointer hover:scale-105 transition-all duration-200"
       >
-        <span className={`text-base font-bold w-6 text-center flex-shrink-0 ${
-          idx < 3 ? 'text-blue-600' : 'text-gray-500'
-        }`}>
-          {idx + 1}
-        </span>
-        
-        <div className="w-12 h-16 rounded-md overflow-hidden flex-shrink-0 bg-white/5">
-          <img
-            src={anime.images.jpg.image_url}
-            alt={anime.title}
-            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = '/placeholder.jpg';
-            }}
+        {/* FIX 1: Added 'transform-gpu' to force hardware acceleration on the container */}
+        <div className="relative aspect-[2/3] rounded-2xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-violet-500/40 transition-all duration-300 transform-gpu">
+          
+          {/* FIX 2: Removed 'rounded-2xl' from the img. The parent overflow-hidden handles the rounding. */}
+          <img 
+            src={anime.images.jpg.image_url} 
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+            alt="" 
           />
-        </div>
-        
-        <div className="flex-1 min-w-0">
-          <h4 className="text-sm font-semibold text-white truncate group-hover:text-blue-600 transition-colors">
-            {anime.title}
-          </h4>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-xs bg-white/5 px-2 py-0.5 rounded text-gray-400">
-              {anime.episodes ? `${anime.episodes} eps` : 'Ongoing'}
-            </span>
-            <span className="text-xs text-yellow-400 font-semibold">
-              ★ {anime.score?.toFixed(1) || 'N/A'}
-            </span>
+          
+          <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-black border border-white/10">
+            HD
           </div>
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-60 group-hover:opacity-100 transition-opacity" />
+        </div>
+        <h3 className="mt-3 text-sm font-bold truncate text-gray-200 group-hover:text-white transition-colors">{anime.title}</h3>
+        <div className="flex items-center justify-between mt-1">
+          <span className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter">{anime.episodes || '?'} EPISODES</span>
+          <span className="text-[10px] text-violet-400 font-black">TV</span>
         </div>
       </div>
     ))}
   </div>
-</div>
-        </div>
+</section>
+
       </main>
+
     </div>
   );
 };
