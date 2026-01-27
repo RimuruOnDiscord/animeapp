@@ -1,5 +1,6 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import Home from './pages/Home';
 import Watch from './pages/Watch';
 
@@ -38,13 +39,49 @@ const TRENDING = [
   { id: 5, title: "Titan fall", ep: 88, rating: 9.5, img: "bg-orange-900" },
 ];
 
+function AppContent() {
+  const location = useLocation();
+
+  return (
+    <AnimatePresence mode="wait">
+      <Routes location={location} key={location.pathname}>
+        <Route
+          path="/"
+          element={
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+              className="min-h-screen bg-[#050505]"
+            >
+              <Home />
+            </motion.div>
+          }
+        />
+        <Route
+          path="/watch/:id"
+          element={
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+              className="min-h-screen bg-black"
+            >
+              <Watch />
+            </motion.div>
+          }
+        />
+      </Routes>
+    </AnimatePresence>
+  );
+}
+
 function App() {
   return (
     <Router>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/watch/:id" element={<Watch />} />
-      </Routes>
+      <AppContent />
     </Router>
   );
 }
