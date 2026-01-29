@@ -287,11 +287,11 @@ const Home: React.FC = () => {
               <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/40 to-transparent flex flex-col justify-end p-8 md:p-12">
                  <div className="flex items-center gap-2 mb-4">
                     <span className="bg-violet-600 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase">Spotlight</span>
-                    <span className="text-sm font-bold text-yellow-500">★ {recentAnime[0].score}</span>
+                    <span className="text-sm font-bold text-yellow-500">★ 8.5</span>
                  </div>
-                 <h1 className="text-4xl md:text-6xl font-black mb-6 max-w-2xl leading-none uppercase italic tracking-tighter">{recentAnime[0].title}</h1>
+                 <h1 className="text-4xl md:text-6xl font-black mb-6 max-w-2xl leading-none uppercase italic tracking-tighter">Fate/strange Fake</h1>
                  <div className="flex gap-4">
-                    <button onClick={createRipple} className="bg-white/10 backdrop-blur-md px-8 py-3 rounded-xl font-black hover:bg-white/20 transition-all border border-white/10">
+                     <button onClick={(e) => { createRipple(e); navigate(`/watch/${recentAnime[0].mal_id}`, { state: { anime: recentAnime[0] } }); }} className="bg-white/10 backdrop-blur-md px-8 py-3 rounded-xl font-black hover:bg-white/20 transition-all border border-white/10">
                       VIEW MORE
                     </button>
                  </div>
@@ -324,7 +324,6 @@ const Home: React.FC = () => {
         <h3 className="mt-3 text-sm font-bold truncate text-gray-200 group-hover:text-white transition-colors">{anime.title}</h3>
         <div className="flex items-center justify-between mt-1">
           <span className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter">{anime.episodes || '?'} EPISODES</span>
-          <span className="text-[10px] text-violet-400 font-black">TV</span>
         </div>
       </div>
     ))}
