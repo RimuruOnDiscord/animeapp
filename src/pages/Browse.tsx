@@ -48,7 +48,7 @@ const Browse: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [isSortOpen, setIsSortOpen] = useState(false);
 
-  // Filter States
+  // Filter States - now used to build search queries
   const [selectedGenre, setSelectedGenre] = useState<number | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [selectedSort, setSelectedSort] = useState<string>('popularity');
@@ -65,42 +65,29 @@ const Browse: React.FC = () => {
       @keyframes vf-fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
       @keyframes vf-fade-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(10px); } }
       
+      /* High-Intensity Ripple */
       .vf-ripple { 
-        position: absolute; width: 50px; height: 50px; border-radius: 50%; 
-        background: radial-gradient(circle, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.10) 70%, transparent 100%); 
-        transform: translate(-50%,-50%) scale(0); pointer-events: none; 
-        box-shadow: 0 0 10px 0px rgba(255,255,255,0.17);
-        animation: vf-ripple 380ms cubic-bezier(0.4, 0, 0.2, 1) forwards; 
+        position: absolute; 
+        width: 50px; 
+        height: 50px; 
+        border-radius: 50%; 
+        background: radial-gradient(circle, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0.15) 70%, transparent 100%); 
+        transform: translate(-50%,-50%) scale(0); 
+        pointer-events: none; 
+        box-shadow: 0 0 20px 2px rgba(255,255,255,0.3);
+        animation: vf-ripple 450ms cubic-bezier(0.1, 0, 0.2, 1) forwards; 
       }
-      @keyframes vf-ripple {
-        0% { transform: translate(-50%,-50%) scale(0); opacity: 0.9; }
-        100% { transform: translate(-50%,-50%) scale(7); opacity: 0; }
-      }/* High-Intensity Ripple */
-.vf-ripple { 
-  position: absolute; 
-  width: 50px; 
-  height: 50px; 
-  border-radius: 50%; 
-  /* Brighter initial gradient */
-  background: radial-gradient(circle, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0.15) 70%, transparent 100%); 
-  transform: translate(-50%,-50%) scale(0); 
-  pointer-events: none; 
-  /* Heavier glow effect */
-  box-shadow: 0 0 20px 2px rgba(255,255,255,0.3);
-  /* Slightly longer duration to feel the "weight" of the click */
-  animation: vf-ripple 450ms cubic-bezier(0.1, 0, 0.2, 1) forwards; 
-}
 
-@keyframes vf-ripple {
-  0% { 
-    transform: translate(-50%,-50%) scale(0); 
-    opacity: 1; /* Start fully visible */
-  }
-  100% { 
-    transform: translate(-50%,-50%) scale(12); /* Increased from 7 to 12 */
-    opacity: 0; 
-  }
-}
+      @keyframes vf-ripple {
+        0% { 
+          transform: translate(-50%,-50%) scale(0); 
+          opacity: 1;
+        }
+        100% { 
+          transform: translate(-50%,-50%) scale(12);
+          opacity: 0; 
+        }
+      }
 
       button { position: relative; overflow: hidden; }
       .thin-scroll::-webkit-scrollbar { width: 4px; }
@@ -142,80 +129,99 @@ const Browse: React.FC = () => {
     fetchGenres();
   }, []);
 
-const performMainSearch = useCallback(async (query: string, pageNum: number = 1) => {
-  if (pageNum === 1) setLoading(true); // Only show full loader on first load
-  
-  try {
-    const params = new URLSearchParams();
-    if (query) params.append('q', query);
-    if (selectedGenre) params.append('genres', selectedGenre.toString());
-    if (selectedStatus) params.append('status', selectedStatus);
+  // Build search query from filters - SAME LOGIC AS DROPDOWN
+  const buildSearchQuery = useCallback(() => {
+    let query = searchQuery;
     
-    params.append('order_by', selectedSort);
-    params.append('sort', 'desc');
-    params.append('sfw', 'true');
-    params.append('page', pageNum.toString());
-    params.append('limit', '24'); // Fetch a decent chunk
-
-    const res = await fetch(`https://api.jikan.moe/v4/anime?${params.toString()}`);
-    const data = await res.json();
+    // Add genre name to search if selected
+    if (selectedGenre) {
+      const genre = genres.find(g => g.mal_id === selectedGenre);
+      if (genre) {
+        query = query ? `${query} ${genre.name}` : genre.name;
+      }
+    }
     
-    if (data.data) {
-      setAnimeList(prev => pageNum === 1 ? data.data : [...prev, ...data.data]);
-      setHasMore(data.pagination.has_next_page);
+    // Add status to search if selected
+    if (selectedStatus) {
+      query = query ? `${query} ${selectedStatus}` : selectedStatus;
     }
-  } catch (e) {
-    console.error(e);
-  } finally {
-    setLoading(false);
-  }
-}, [selectedGenre, selectedStatus, selectedSort]);
+    
+    return query;
+  }, [searchQuery, selectedGenre, selectedStatus, genres]);
 
-useEffect(() => {
-  setPage(1);
-  performMainSearch(searchQuery, 1);
-}, [selectedGenre, selectedStatus, selectedSort]);
+  // Simple search - like dropdown
+  const performMainSearch = useCallback(async (query: string, pageNum: number = 1) => {
+    if (pageNum === 1) setLoading(true);
+    
+    try {
+      const params = new URLSearchParams();
+      const searchTerm = query || buildSearchQuery();
+      
+      if (searchTerm) {
+        params.append('q', encodeURIComponent(searchTerm));
+      }
+      params.append('limit', '24');
+      params.append('page', pageNum.toString());
 
-// 4. The Sentinel Observer (Detects the bottom of the page)
-const lastElementRef = useCallback((node: HTMLDivElement) => {
-  if (loading) return;
-  if (observer.current) observer.current.disconnect();
-
-  observer.current = new IntersectionObserver(entries => {
-    if (entries[0].isIntersecting && hasMore) {
-      setPage(prev => {
-        const nextPage = prev + 1;
-        performMainSearch(searchQuery, nextPage);
-        return nextPage;
-      });
+      const res = await fetch(`https://api.jikan.moe/v4/anime?${params.toString()}`);
+      const data = await res.json();
+      
+      if (data.data) {
+        setAnimeList(prev => pageNum === 1 ? data.data : [...prev, ...data.data]);
+        setHasMore(data.pagination.has_next_page);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
-  });
+  }, [buildSearchQuery]);
 
-  if (node) observer.current.observe(node);
-}, [loading, hasMore, searchQuery, performMainSearch]);
+  // Trigger search when filters change
+  useEffect(() => {
+    setPage(1);
+    const searchTerm = buildSearchQuery();
+    performMainSearch(searchTerm, 1);
+  }, [searchQuery, selectedGenre, selectedStatus, buildSearchQuery, performMainSearch]);
 
-  // Dropdown & Grid Update Timer
+  // The Sentinel Observer (Detects the bottom of the page)
+  const lastElementRef = useCallback((node: HTMLDivElement) => {
+    if (loading) return;
+    if (observer.current) observer.current.disconnect();
+
+    observer.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore) {
+        setPage(prev => {
+          const nextPage = prev + 1;
+          const searchTerm = buildSearchQuery();
+          performMainSearch(searchTerm, nextPage);
+          return nextPage;
+        });
+      }
+    });
+
+    if (node) observer.current.observe(node);
+  }, [loading, hasMore, buildSearchQuery, performMainSearch]);
+
+  // Dropdown search - simple query only
   useEffect(() => {
     const timer = setTimeout(async () => {
       if (searchQuery) {
         setIsSearching(true);
-        // Header dropdown results
+        
         const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(searchQuery)}&limit=6`);
         const data = await res.json();
         setSearchResults(data.data || []);
         setShowSearch(true);
         setIsSearching(false);
         
-        // Sync URL and refresh main grid
         setSearchParams({ q: searchQuery });
-        performMainSearch(searchQuery);
       } else {
         setShowSearch(false);
-        performMainSearch('');
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [searchQuery, performMainSearch, setSearchParams]);
+  }, [searchQuery, setSearchParams]);
 
   // Handle dropdown mount/unmount animation timing
   useEffect(() => {
@@ -255,7 +261,7 @@ const lastElementRef = useCallback((node: HTMLDivElement) => {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* SEARCH BAR (Matches Home.tsx) */}
+            {/* SEARCH BAR */}
             <div className="relative group">
               <div className="relative">
                 <input
@@ -269,7 +275,7 @@ const lastElementRef = useCallback((node: HTMLDivElement) => {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
               </div>
 
-              {/* SEARCH DROPDOWN (Matches Home.tsx) */}
+              {/* SEARCH DROPDOWN */}
               {searchMounted && (
                 <div className={`absolute top-full right-0 mt-3 w-80 bg-[#0f0f0f] border border-white/10 rounded-2xl shadow-2xl z-[110] overflow-hidden ${showSearch ? 'animate-in' : 'animate-out'}`}>
                   {searchResults.map((anime) => (
@@ -292,151 +298,149 @@ const lastElementRef = useCallback((node: HTMLDivElement) => {
               )}
             </div>
             
-<button 
-  onClick={(e) => { createRipple(e); setShowFilters(!showFilters); }}
-  className={`
-    p-2 rounded-md border transition-all duration-200 relative overflow-hidden
-    ${showFilters 
-      ? 'bg-violet-600 border-violet-400 shadow-[0_0_20px_rgba(139,92,246,0.4)]' 
-      : 'bg-violet-700 border-violet-600 hover:bg-violet-600 shadow-lg'
-    }
-  `}
->
-  {/* The Filter Icon stays on top of the ripple usually, but we want high contrast */}
-  <Filter size={18} className="relative z-10" />
-</button>
+            <button 
+              onClick={(e) => { createRipple(e); setShowFilters(!showFilters); }}
+              className={`
+                p-2 rounded-md border transition-all duration-200 relative overflow-hidden
+                ${showFilters 
+                  ? 'bg-violet-600 border-violet-400 shadow-[0_0_20px_rgba(139,92,246,0.4)]' 
+                  : 'bg-violet-700 border-violet-600 hover:bg-violet-600 shadow-lg'
+                }
+              `}
+            >
+              <Filter size={18} className="relative z-10" />
+            </button>
           </div>
         </div>
       </header>
 
       {/* FILTERS PANEL */}
-<div className={`overflow-hidden transition-all duration-300 ease-in-out border-b border-white/5 bg-[#0a0a0a] ${showFilters ? 'max-h-[500px] py-8' : 'max-h-0'}`}>
-  <div className="container mx-auto px-4 grid grid-cols-1 md:grid-cols-3 gap-12">
-    
-    {/* 1. GENRES */}
-    <div className="space-y-4">
-      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 flex items-center gap-2">
-        <Filter size={12}/> Genres
-      </h3>
-      <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto thin-scroll pr-2">
-        {genres.map(g => (
-          <button 
-            key={g.mal_id} 
-            onClick={(e) => { createRipple(e); setSelectedGenre(selectedGenre === g.mal_id ? null : g.mal_id); }}
-            className={`text-left px-3 py-2 text-xs rounded-lg border transition-all ${
-              selectedGenre === g.mal_id 
-                ? 'bg-violet-600/20 border-violet-500 text-violet-300 font-bold' 
-                : 'bg-white/5 border-white/5 text-gray-400 hover:border-white/20'
-            }`}
-          >
-            {g.name}
-          </button>
-        ))}
-      </div>
-    </div>
+      <div className={`overflow-hidden transition-all duration-300 ease-in-out border-b border-white/5 bg-[#0a0a0a] ${showFilters ? 'max-h-[500px] py-8' : 'max-h-0'}`}>
+        <div className="container mx-auto px-4 grid grid-cols-1 md:grid-cols-3 gap-12">
+          
+          {/* 1. GENRES */}
+          <div className="space-y-4">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 flex items-center gap-2">
+              <Filter size={12}/> Genres
+            </h3>
+            <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto thin-scroll pr-2">
+              {genres.map(g => (
+                <button 
+                  key={g.mal_id} 
+                  onClick={(e) => { createRipple(e); setSelectedGenre(selectedGenre === g.mal_id ? null : g.mal_id); }}
+                  className={`text-left px-3 py-2 text-xs rounded-lg border transition-all ${
+                    selectedGenre === g.mal_id 
+                      ? 'bg-violet-600/20 border-violet-500 text-violet-300 font-bold' 
+                      : 'bg-white/5 border-white/5 text-gray-400 hover:border-white/20'
+                  }`}
+                >
+                  {g.name}
+                </button>
+              ))}
+            </div>
+          </div>
 
-    {/* 2. PRODUCTION STATUS */}
-    <div className="space-y-4">
-      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Production Status</h3>
-      <div className="flex flex-col gap-2">
-        {['airing', 'complete', 'upcoming'].map(s => (
-          <button 
-            key={s} 
-            onClick={(e) => { createRipple(e); setSelectedStatus(selectedStatus === s ? '' : s); }}
-            className={`flex items-center justify-between px-4 py-3 text-xs font-bold uppercase rounded-xl border transition-all ${
-              selectedStatus === s 
-                ? 'bg-violet-600 border-violet-500 text-white' 
-                : 'bg-white/5 border-white/5 text-gray-400 hover:border-white/20'
-            }`}
-          >
-            {s} {selectedStatus === s && <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse shadow-[0_0_8px_white]"/>}
-          </button>
-        ))}
-      </div>
-    </div>
+          {/* 2. PRODUCTION STATUS */}
+          <div className="space-y-4">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Production Status</h3>
+            <div className="flex flex-col gap-2">
+              {['airing', 'complete', 'upcoming'].map(s => (
+                <button 
+                  key={s} 
+                  onClick={(e) => { createRipple(e); setSelectedStatus(selectedStatus === s ? '' : s); }}
+                  className={`flex items-center justify-between px-4 py-3 text-xs font-bold uppercase rounded-xl border transition-all ${
+                    selectedStatus === s 
+                      ? 'bg-violet-600 border-violet-500 text-white' 
+                      : 'bg-white/5 border-white/5 text-gray-400 hover:border-white/20'
+                  }`}
+                >
+                  {s} {selectedStatus === s && <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse shadow-[0_0_8px_white]"/>}
+                </button>
+              ))}
+            </div>
+          </div>
 
-    {/* 3. RANKING STRATEGY (Synced Styles) */}
-<div className="space-y-4">
-  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">
-    Sort by
-  </h3>
-  
-  <div className="relative">
-    {/* Trigger Button */}
-    <button
-      onClick={(e) => { 
-        createRipple(e); 
-        setIsSortOpen(!isSortOpen); 
-      }}
-      className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold uppercase rounded-xl border transition-all duration-300 ${
-        isSortOpen 
-          ? 'bg-violet-600/20 border-violet-500 text-violet-300 shadow-[0_0_15px_rgba(139,92,246,0.1)]' 
-          : 'bg-white/5 border-white/10 text-gray-400 hover:border-white/20'
-      }`}
-    >
-      {/* Dynamic Label Paraphrasing */}
-      <span>
-        {selectedSort === 'popularity' && 'Most Popular'}
-        {selectedSort === 'score' && 'Highest Rated'}
-        {selectedSort === 'start_date' && 'Latest Arrivals'}
-      </span>
-      <ChevronDown 
-        size={16} 
-        className={`transition-transform duration-300 ${isSortOpen ? 'rotate-180 text-violet-400' : 'text-gray-600'}`} 
-      />
-    </button>
+          {/* 3. SORT (kept for UI but not used in search logic) */}
+          <div className="space-y-4">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">
+              Sort by
+            </h3>
+            
+            <div className="relative">
+              <button
+                onClick={(e) => { 
+                  createRipple(e); 
+                  setIsSortOpen(!isSortOpen); 
+                }}
+                className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold uppercase rounded-xl border transition-all duration-300 ${
+                  isSortOpen 
+                    ? 'bg-violet-600/20 border-violet-500 text-violet-300 shadow-[0_0_15px_rgba(139,92,246,0.1)]' 
+                    : 'bg-white/5 border-white/10 text-gray-400 hover:border-white/20'
+                }`}
+              >
+                <span>
+                  {selectedSort === 'popularity' && 'Most Popular'}
+                  {selectedSort === 'score' && 'Highest Rated'}
+                  {selectedSort === 'start_date' && 'Latest Arrivals'}
+                </span>
+                <ChevronDown 
+                  size={16} 
+                  className={`transition-transform duration-300 ${isSortOpen ? 'rotate-180 text-violet-400' : 'text-gray-600'}`} 
+                />
+              </button>
 
-    {/* Dropdown Menu */}
-    {isSortOpen && (
-      <>
-        <div className="fixed inset-0 z-[110]" onClick={() => setIsSortOpen(false)} />
-        
-        <div className="absolute top-full left-0 w-full mt-2 bg-[#0f0f0f] border border-white/10 rounded-xl shadow-2xl z-[120] overflow-hidden animate-in origin-top">
-          {[
-            { id: 'popularity', label: 'Most Popular' },
-            { id: 'score', label: 'Highest Rated' },
-            { id: 'start_date', label: 'Latest Arrivals' }
-          ].map((option) => (
-            <div
-              key={option.id}
-              onClick={() => {
-                setSelectedSort(option.id);
-                setIsSortOpen(false);
-              }}
-              className={`px-4 py-3 text-xs font-bold uppercase cursor-pointer transition-all flex items-center justify-between ${
-                selectedSort === option.id 
-                  ? 'bg-violet-600/20 text-violet-300' 
-                  : 'hover:bg-white/5 text-gray-500 hover:text-white'
-              }`}
-            >
-              {option.label}
-              {selectedSort === option.id && (
-                <div className="w-1.5 h-1.5 bg-violet-400 rounded-full shadow-[0_0_8px_rgba(167,139,250,0.8)]" />
+              {isSortOpen && (
+                <>
+                  <div className="fixed inset-0 z-[110]" onClick={() => setIsSortOpen(false)} />
+                  
+                  <div className="absolute top-full left-0 w-full mt-2 bg-[#0f0f0f] border border-white/10 rounded-xl shadow-2xl z-[120] overflow-hidden animate-in origin-top">
+                    {[
+                      { id: 'popularity', label: 'Most Popular' },
+                      { id: 'score', label: 'Highest Rated' },
+                      { id: 'start_date', label: 'Latest Arrivals' }
+                    ].map((option) => (
+                      <div
+                        key={option.id}
+                        onClick={() => {
+                          setSelectedSort(option.id);
+                          setIsSortOpen(false);
+                        }}
+                        className={`px-4 py-3 text-xs font-bold uppercase cursor-pointer transition-all flex items-center justify-between ${
+                          selectedSort === option.id 
+                            ? 'bg-violet-600/20 text-violet-300' 
+                            : 'hover:bg-white/5 text-gray-500 hover:text-white'
+                        }`}
+                      >
+                        {option.label}
+                        {selectedSort === option.id && (
+                          <div className="w-1.5 h-1.5 bg-violet-400 rounded-full shadow-[0_0_8px_rgba(167,139,250,0.8)]" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
-          ))}
+          </div>
+
         </div>
-      </>
-    )}
-  </div>
-</div>
+      </div>
 
-  </div>
-</div>
-
-      {/* RESULTS GRID - SYNCED WITH RECENTLY UPDATED ANIMATIONS */}
+      {/* RESULTS GRID */}
       <main className="container mx-auto px-4 py-12 space-y-6">
-        <h2 className="text-2xl font-bold tracking-tight">{searchQuery ? `Search Results for: ${searchQuery}` : 'Browse'}</h2>
+        <h2 className="text-2xl font-bold tracking-tight">
+          {buildSearchQuery() ? `Search Results for: ${buildSearchQuery()}` : 'Browse'}
+        </h2>
         
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
           {animeList.map((anime, idx) => (
             <div
-              key={anime.mal_id}
+              key={`${anime.mal_id}-${idx}`}
               onClick={() => navigate(`/watch/${anime.mal_id}`, { state: { anime } })}
-              className="group cursor-pointer hover:scale-105 transition-all duration-200 hover:shadow-lg"
-              style={{ animationDelay: `${idx * 40}ms` }}
+              className="group cursor-pointer hover:scale-105 transition-all duration-200 hover:shadow-lg animate-in"
+              style={{ animationDelay: `${(idx % 24) * 40}ms` }}
             >
-              {/* IMAGE CONTAINER WITH EXACT HOME STYLE */}
+              {/* IMAGE CONTAINER */}
               <div className="relative aspect-[2/3] rounded-2xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-violet-500/40 transition-all duration-300 transform-gpu">
                 <img
                   src={anime.images.jpg.image_url}
@@ -449,7 +453,7 @@ const lastElementRef = useCallback((node: HTMLDivElement) => {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-60 group-hover:opacity-100 transition-opacity" />
               </div>
 
-              {/* TITLE AND INFO WITH EXACT HOME STYLE */}
+              {/* TITLE AND INFO */}
               <h3 className="mt-3 text-sm font-bold truncate text-gray-200 group-hover:text-white transition-colors">
                 {anime.title}
               </h3>
@@ -471,34 +475,17 @@ const lastElementRef = useCallback((node: HTMLDivElement) => {
           </div>
         )}
 
-<main className="container mx-auto px-4 py-12 space-y-6">
-  
-  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-    {animeList.map((anime, idx) => (
-      <div
-        key={`${anime.mal_id}-${idx}`} // Use idx to prevent key collisions on infinite scroll
-        onClick={() => navigate(`/watch/${anime.mal_id}`, { state: { anime } })}
-        className="group cursor-pointer hover:scale-105 transition-all duration-200 hover:shadow-lg animate-in"
-        style={{ animationDelay: `${(idx % 24) * 40}ms` }} // Delay only the current "batch"
-      >
-        {/* ... Card Content (Keep your existing styles) ... */}
-      </div>
-    ))}
-  </div>
-
-  {/* THE SENTINEL - This triggers the infinite load */}
-  <div ref={lastElementRef} className="h-20 w-full flex items-center justify-center">
-    {hasMore && (
-      <div className="flex flex-col items-center gap-2 opacity-50">
-        <div className="w-6 h-6 border-2 border-white-500 border-t-transparent rounded-full animate-spin" />
-        <span className="text-[10px] font-black uppercase tracking-widest text-white-400">
-          Loading...
-        </span>
-      </div>
-    )}
-  </div>
-</main>
-
+        {/* THE SENTINEL - This triggers the infinite load */}
+        <div ref={lastElementRef} className="h-20 w-full flex items-center justify-center">
+          {hasMore && (
+            <div className="flex flex-col items-center gap-2 opacity-50">
+              <div className="w-6 h-6 border-2 border-white-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-white-400">
+                Loading...
+              </span>
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );
