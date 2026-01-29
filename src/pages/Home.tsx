@@ -226,8 +226,9 @@ const Home: React.FC = () => {
             </div>
 
             {/* Nav Links - SpenFlix Style */}
-            <nav className="hidden md:flex items-center gap-1">
+            <nav className="hidden md:flex items-center gap-2">
               <button onClick={createRipple} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-violet-600 text-white hover:bg-violet-500 hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-violet-500/25"><HomeIcon size={18}/> Home</button>
+              <button onClick={(e) => { createRipple(e); navigate('/browse'); }} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-white/10 text-white hover:bg-white/20 hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-white/10"><Folder size={18}/> Browse</button>
             </nav>
           </div>
 
@@ -267,6 +268,16 @@ const Home: React.FC = () => {
                   ))}
                   {isSearching && (
                     <div className="p-4 text-center text-[10px] text-gray-500 uppercase tracking-widest animate-pulse">Searching archives...</div>
+                  )}
+                  {searchResults.length > 0 && (
+                    <div className="p-3 border-t border-white/5">
+                      <button
+                        onClick={() => navigate(`/browse?q=${encodeURIComponent(searchQuery)}`)}
+                        className="w-full text-center text-xs text-violet-400 hover:text-violet-300 font-bold uppercase tracking-wider transition-colors"
+                      >
+                        View More Results →
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -324,37 +335,6 @@ const Home: React.FC = () => {
         <h3 className="mt-3 text-sm font-bold truncate text-gray-200 group-hover:text-white transition-colors">{anime.title}</h3>
         <div className="flex items-center justify-between mt-1">
           <span className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter">{anime.episodes || '?'} EPISODES</span>
-        </div>
-      </div>
-    ))}
-  </div>
-</section>
-
-{/* RECOMMENDATIONS GRID */}
-<section className="space-y-6">
-  <h2 className="text-2xl font-bold tracking-tight">Recommendations</h2>
-  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-    {recentAnime.slice(0, 12).map((anime) => (
-      <div
-        key={`rec-${anime.mal_id}`}
-        onClick={() => navigate(`/watch/${anime.mal_id}`, { state: { anime } })}
-        className="group cursor-pointer hover:scale-105 transition-all duration-200 hover:shadow-lg "
-      >
-        <div className="relative aspect-[2/3] rounded-2xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-violet-500/40 transition-all duration-300 transform-gpu">
-          <img
-            src={anime.images.jpg.image_url}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-            alt=""
-          />
-          <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-black border border-white/10">
-            HD
-          </div>
-          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-60 group-hover:opacity-100 transition-opacity" />
-        </div>
-        <h3 className="mt-3 text-sm font-bold truncate text-gray-200 group-hover:text-white transition-colors">{anime.title}</h3>
-        <div className="flex items-center justify-between mt-1">
-          <span className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter">{anime.episodes || '?'} EPISODES</span>
-          <span className="text-[10px] text-violet-400 font-black">TV</span>
         </div>
       </div>
     ))}
