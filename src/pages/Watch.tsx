@@ -34,7 +34,7 @@ const Watch: React.FC = () => {
   const [anime, setAnime] = useState<Anime | null>(location.state?.anime || null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentEp, setCurrentEp] = useState(1);
-  const [currentServer, setCurrentServer] = useState('vidfast');
+  const [currentServer, setCurrentServer] = useState('mapple');
   const [lightsOff, setLightsOff] = useState(false);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [servers, setServers] = useState<Server[]>([]);
@@ -177,170 +177,121 @@ const Watch: React.FC = () => {
     }
   }, [anime, totalEpisodes]);
 
-  const fetchTmdbId = async (title: string) => {
+const fetchTmdbId = async (title: string) => {
+    const TMDB_API_KEY = '630c8f01625f3d0eb72180513daa9fca';
+
     try {
-      // Extract season information from title
-      const seasonMatch = title.match(/(?:season|season\s+(\d+)|(\d+)\w*\s*season)/i);
+      // 1. SEASON PARSING
+      const seasonMatch = title.match(/(?:season|part|cour)\s+(\d+)|(\d+)(?:st|nd|rd|th)\s+(?:season|part|cour)/i);
       const seasonNumber = seasonMatch ? (parseInt(seasonMatch[1] || seasonMatch[2]) || 1) : 1;
 
-      // Clean title for better search results - keep more original characters
+      // 2. CLEAN TITLE
       let cleanTitle = title
-        .replace(/(?:season|season\s+\d+|\d+\w*\s*season)/i, '')
-        .replace(/[^\w\s\-:]/g, '') // Keep hyphens and colons which are common in titles
+        .replace(/(?:season|part|cour)\s+\d+|(\d+)(?:st|nd|rd|th)\s+(?:season|part|cour)/i, '')
+        .replace(/\s+/g, ' ')
         .trim();
 
-      console.log('Searching for:', cleanTitle, 'Season:', seasonNumber, 'Original:', title);
+      const searchQueries = [cleanTitle];
+      if (cleanTitle.includes(':')) {
+        searchQueries.push(cleanTitle.split(':')[0].trim());
+      }
 
-      // Helper function to calculate title similarity
-      const calculateSimilarity = (str1: string, str2: string): number => {
-        const longer = str1.length > str2.length ? str1 : str2;
-        const shorter = str1.length > str2.length ? str2 : str1;
-        if (longer.length === 0) return 1.0;
-        return (longer.length - levenshteinDistance(longer, shorter)) / longer.length;
-      };
+      console.log(`Searching TMDB for: "${cleanTitle}" | Season: ${seasonNumber}`);
 
-      const levenshteinDistance = (str1: string, str2: string): number => {
-        const matrix = [];
-        for (let i = 0; i <= str2.length; i++) {
-          matrix[i] = [i];
+      let bestMatch: any = null;
+      let isMatchMovie = false;
+
+      // 3. FIND THE SHOW (Loop through queries)
+      for (const query of searchQueries) {
+        if (!query) continue; // Skip empty queries
+        
+        const tvResponse = await fetch(`https://api.themoviedb.org/3/search/tv?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&include_adult=false`);
+        const tvData = await tvResponse.json();
+
+        if (tvData.results?.length > 0) {
+          const candidates = tvData.results.filter((res: any) => 
+            res.genre_ids?.includes(16) || res.origin_country?.includes('JP')
+          );
+          if (candidates.length > 0) {
+            bestMatch = candidates[0];
+            break; 
+          }
         }
-        for (let j = 0; j <= str1.length; j++) {
-          matrix[0][j] = j;
-        }
-        for (let i = 1; i <= str2.length; i++) {
-          for (let j = 1; j <= str1.length; j++) {
-            if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-              matrix[i][j] = matrix[i - 1][j - 1];
-            } else {
-              matrix[i][j] = Math.min(
-                matrix[i - 1][j - 1] + 1,
-                matrix[i][j - 1] + 1,
-                matrix[i - 1][j] + 1
-              );
+      }
+
+      // 4. CHECK MOVIES IF NO TV SHOW FOUND
+      if (!bestMatch) {
+        for (const query of searchQueries) {
+          if (!query) continue;
+
+          const movieResponse = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&include_adult=false`);
+          const movieData = await movieResponse.json();
+
+          if (movieData.results?.length > 0) {
+            const candidates = movieData.results.filter((res: any) => res.genre_ids?.includes(16));
+            if (candidates.length > 0) {
+              bestMatch = candidates[0];
+              isMatchMovie = true;
+              break;
             }
           }
         }
-        return matrix[str2.length][str1.length];
-      };
+      }
 
-      // First search for anime specifically in TV shows
-      const animeResponse = await fetch(`https://api.themoviedb.org/3/search/tv?api_key=630c8f01625f3d0eb72180513daa9fca&query=${encodeURIComponent(cleanTitle)}&include_adult=false`);
-      const animeData = await animeResponse.json();
+      // 5. SET STATES (The crucial part to prevent sticking)
+      if (bestMatch) {
+        console.log(`Match Found: ${bestMatch.name || bestMatch.title} (${isMatchMovie ? 'Movie' : 'TV'})`);
+        
+        // Update ID and Type immediately
+        setTmdbId(bestMatch.id);
+        setIsMovie(isMatchMovie);
 
-      if (animeData.results && animeData.results.length > 0) {
-        // Score each result based on multiple factors
-        const scoredResults = animeData.results.map((result: any) => {
-          let score = 0;
-
-          // Exact title match gets highest score
-          if (result.name.toLowerCase() === cleanTitle.toLowerCase()) score += 100;
-          if (result.original_name?.toLowerCase() === cleanTitle.toLowerCase()) score += 100;
-
-          // High similarity gets good score
-          const nameSimilarity = calculateSimilarity(result.name.toLowerCase(), cleanTitle.toLowerCase());
-          const originalNameSimilarity = result.original_name ? calculateSimilarity(result.original_name.toLowerCase(), cleanTitle.toLowerCase()) : 0;
-          score += Math.max(nameSimilarity, originalNameSimilarity) * 50;
-
-          // Japanese origin gets bonus
-          if (result.origin_country?.includes('JP')) score += 30;
-          if (result.original_language === 'ja') score += 30;
-
-          // Anime keywords in overview get bonus
-          if (result.overview?.toLowerCase().includes('anime')) score += 20;
-
-          // Recent release gets slight bonus (anime are usually recent)
-          const releaseYear = result.first_air_date ? new Date(result.first_air_date).getFullYear() : 0;
-          if (releaseYear >= 2000) score += 10;
-
-          return { ...result, matchScore: score };
-        });
-
-        // Sort by score and take the best match
-        scoredResults.sort((a: any, b: any) => b.matchScore - a.matchScore);
-        const bestMatch = scoredResults[0];
-
-        console.log('Best TMDB match:', bestMatch.name, 'Score:', bestMatch.matchScore);
-
-        // If we have season info and the anime has seasons, try to get season-specific data
-        if (seasonNumber > 1 && bestMatch) {
+        // --- EPISODE COUNT LOGIC ---
+        if (isMatchMovie) {
+          // FIX 1: If it's a movie, we MUST set episodes to 1, otherwise it might stay null
+          setTotalEpisodes(1);
+        } else {
+          // It is a TV Show, fetch details
           try {
-            const seasonsResponse = await fetch(`https://api.themoviedb.org/3/tv/${bestMatch.id}?api_key=630c8f01625f3d0eb72180513daa9fca`);
-            const seasonsData = await seasonsResponse.json();
+            const detailsResponse = await fetch(`https://api.themoviedb.org/3/tv/${bestMatch.id}?api_key=${TMDB_API_KEY}`);
+            const detailsData = await detailsResponse.json();
 
-            if (seasonsData.seasons && seasonsData.seasons.length >= seasonNumber) {
-              // Use the season-specific ID if available
-              const seasonData = seasonsData.seasons[seasonNumber - 1];
-              if (seasonData) {
-                console.log('Found season data:', seasonData);
-                setTotalEpisodes(seasonData.episode_count || 12);
+            let episodesFound = false;
+
+            // Try to find exact season match
+            if (detailsData.seasons) {
+              const specificSeason = detailsData.seasons.find((s: any) => s.season_number === seasonNumber);
+              if (specificSeason && specificSeason.episode_count > 0) {
+                setTotalEpisodes(specificSeason.episode_count);
+                episodesFound = true;
               }
             }
-          } catch (seasonError) {
-            console.log('Could not fetch season data, using default');
+
+            // Fallback to general episode count
+            if (!episodesFound) {
+              const count = detailsData.last_episode_to_air?.episode_number || detailsData.number_of_episodes || 12;
+              setTotalEpisodes(count);
+            }
+          } catch (detailError) {
+            console.warn('Failed to fetch episode count, defaulting to 12');
+            // FIX 2: Even if API fails, set a number so UI doesn't hang
+            setTotalEpisodes(12);
           }
         }
-
-        setTmdbId(bestMatch.id);
-        setIsMovie(false);
-
-        // Fetch episode count for TV shows if not already set
-        if (!totalEpisodes) {
-          const detailsResponse = await fetch(`https://api.themoviedb.org/3/tv/${bestMatch.id}?api_key=630c8f01625f3d0eb72180513daa9fca`);
-          const detailsData = await detailsResponse.json();
-          if (detailsData.number_of_episodes) {
-            setTotalEpisodes(detailsData.number_of_episodes);
-          }
-        }
-
-        return;
-      }
-
-      // If no TV results, search movies as fallback
-      const movieResponse = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=630c8f01625f3d0eb72180513daa9fca&query=${encodeURIComponent(cleanTitle)}&include_adult=false`);
-      const movieData = await movieResponse.json();
-
-      if (movieData.results && movieData.results.length > 0) {
-        // Score movie results similarly
-        const scoredMovies = movieData.results.map((result: any) => {
-          let score = 0;
-
-          // Exact title match
-          if (result.title.toLowerCase() === cleanTitle.toLowerCase()) score += 100;
-          if (result.original_title?.toLowerCase() === cleanTitle.toLowerCase()) score += 100;
-
-          // Similarity scoring
-          const titleSimilarity = calculateSimilarity(result.title.toLowerCase(), cleanTitle.toLowerCase());
-          const originalTitleSimilarity = result.original_title ? calculateSimilarity(result.original_title.toLowerCase(), cleanTitle.toLowerCase()) : 0;
-          score += Math.max(titleSimilarity, originalTitleSimilarity) * 50;
-
-          // Japanese language/origin
-          if (result.original_language === 'ja') score += 30;
-
-          // Anime keywords
-          if (result.overview?.toLowerCase().includes('anime')) score += 20;
-
-          return { ...result, matchScore: score };
-        });
-
-        // Sort and pick best match
-        scoredMovies.sort((a: any, b: any) => b.matchScore - a.matchScore);
-        const bestMovie = scoredMovies[0];
-
-        console.log('Best TMDB movie match:', bestMovie.title, 'Score:', bestMovie.matchScore);
-
-        setTmdbId(bestMovie.id);
-        setIsMovie(true);
       } else {
-        // Fallback: use MAL ID directly (less reliable but better than nothing)
-        console.log('No TMDB matches found, using MAL ID as fallback');
+        // Fallback if absolutely nothing found
+        console.log('No match found, using MAL fallback');
         setTmdbId(anime?.mal_id || null);
         setIsMovie(false);
+        setTotalEpisodes(12); 
       }
+
     } catch (error) {
-      console.error('Error fetching TMDB ID:', error);
-      // Ultimate fallback
+      console.error('Critical Error:', error);
+      // FIX 3: Ultimate safety net
       setTmdbId(anime?.mal_id || null);
       setIsMovie(false);
+      setTotalEpisodes(12);
     }
   };
 
@@ -353,7 +304,7 @@ const Watch: React.FC = () => {
       case 'vidfast':
         return isMovie
           ? `https://vidfast.pro/movie/${id}?autoplay=true`
-          : `https://vidfast.pro/tv/${id}/${season}/${currentEp}`;
+          : `https://vidfast.pro/tv/${id}/${season}/${currentEp}?autoplay=true`;
       case 'mapple':
         return isMovie
           ? `https://mapple.uk/watch/movie/${id}?autoplay=true`
